@@ -1,24 +1,36 @@
 package net.pilsfree.selfieapp
 
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.provider.MediaStore
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity() {
+
+    var imageUri : Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         button1.setOnClickListener {
+
+            // https://stackoverflow.com/a/10382217
+            val cv = ContentValues()
+            cv.put(MediaStore.Images.Media.TITLE,"Selfie Snap")
+            cv.put(MediaStore.Images.Media.DESCRIPTION, "Selfie Snap")
+            imageUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
+
             val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
             intent.putExtra("android.intent.extras.CAMERA_FACING", 1)
+            intent.putExtra(MediaStore.EXTRA_OUTPUT,imageUri)
             startActivityForResult(intent,1)
         }
 
@@ -69,10 +81,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == 1 && resultCode == Activity.RESULT_OK) {
-            val image = data!!.extras!!.get("data") as Bitmap
-            imageView.setImageBitmap(image)
+        if (requestCode == 1 && resultCode == Activity.RESULT_OK && imageUri != null) {
+            var preview = MediaStore.Images.Media.getBitmap(contentResolver,imageUri)
+            // kouknem se jesli to nemame nahodou pretoceny
+            if (preview.width > preview.height) {
+                preview = preview.rotate(-90F)
+            }
+            // moc velky museli bysme predelavat filtry
+            while (preview.width > 900) {
+                preview = Bitmap.createScaledBitmap(preview,900,1200,false)
+            }
+            imageView.setImageBitmap(preview)
         }
         super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    fun Bitmap.rotate(degrees: Float): Bitmap {
+        val matrix = Matrix().apply { postRotate(degrees) }
+        return Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
     }
 }
