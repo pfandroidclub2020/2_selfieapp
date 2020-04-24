@@ -3,12 +3,15 @@ package net.pilsfree.selfieapp
 import android.app.Activity
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.android.synthetic.main.activity_main.*
 
@@ -21,28 +24,31 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         button1.setOnClickListener {
+            withPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) {
+                // https://stackoverflow.com/a/10382217
+                val cv = ContentValues()
+                cv.put(MediaStore.Images.Media.TITLE, "Selfie Snap")
+                cv.put(MediaStore.Images.Media.DESCRIPTION, "Selfie Snap")
+                imageUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
 
-            // https://stackoverflow.com/a/10382217
-            val cv = ContentValues()
-            cv.put(MediaStore.Images.Media.TITLE,"Selfie Snap")
-            cv.put(MediaStore.Images.Media.DESCRIPTION, "Selfie Snap")
-            imageUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
-
-            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-            intent.putExtra("android.intent.extras.CAMERA_FACING", 1)
-            intent.putExtra(MediaStore.EXTRA_OUTPUT,imageUri)
-            startActivityForResult(intent,1)
+                val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+                intent.putExtra("android.intent.extras.CAMERA_FACING", 1)
+                intent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri)
+                startActivityForResult(intent, 1)
+            }
         }
 
         button2.setOnClickListener {
-            val path = MediaStore.Images.Media.
-                insertImage(contentResolver,imageView.drawable.toBitmap(),"selfie","selfie")
-            val uri = Uri.parse(path)
-            val intent = Intent(Intent.ACTION_SEND)
-            intent.type = "image/png"
-            intent.putExtra(Intent.EXTRA_STREAM,uri)
-            val intentChooser = Intent.createChooser(intent,"Sdilet selfie")
-            startActivity(intentChooser)
+            withPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) {
+                val path = MediaStore.Images.Media.
+                    insertImage(contentResolver,imageView.drawable.toBitmap(),"selfie","selfie")
+                val uri = Uri.parse(path)
+                val intent = Intent(Intent.ACTION_SEND)
+                intent.type = "image/png"
+                intent.putExtra(Intent.EXTRA_STREAM,uri)
+                val intentChooser = Intent.createChooser(intent,"Sdilet selfie")
+                startActivity(intentChooser)
+            }
         }
 
         bw.setOnClickListener {
@@ -99,5 +105,30 @@ class MainActivity : AppCompatActivity() {
     fun Bitmap.rotate(degrees: Float): Bitmap {
         val matrix = Matrix().apply { postRotate(degrees) }
         return Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
+    }
+
+    // ohledne opravneni
+    var lastRequestID = 1000
+    private val finnishMap = mutableMapOf<Int,() -> Unit>()
+
+    fun withPermission(permission:String, onFinnish : () -> Unit ) {
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+            onFinnish()
+        } else {
+            lastRequestID++
+            finnishMap[lastRequestID] = onFinnish
+            ActivityCompat.requestPermissions(this, arrayOf(permission),lastRequestID)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            finnishMap[requestCode]?.invoke()
+            finnishMap.remove(requestCode)
+        }
     }
 }
